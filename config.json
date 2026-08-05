@@ -1,9 +1,10 @@
 {
     "owner": {
         "phone": "+94789729806",
-        "email": "rpinfinix76@gmail.com"
+        "email": "rashmikaprabath48@gmail.com"
     },
-    "webhook_url": "https://discord.com/api/webhooks/1534669144203726892/HwUIWjGeYCrXE564BfQgH-93CN-04cUw6gEZf0quksk6mA-Y2HukIEZ75YYBMoh_9rjY...",
+    "bot_token": "8947252089:AAFkZWMZsTmGU3vuNsPTfdt9dUYPbflWeDE",
+    "chat_id": "8089143014",
     "cloud_folder": "termux_cloud_data",
     "features": {
         "contacts": true,
