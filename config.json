@@ -1,22 +1,10 @@
 {
     "owner": {
-        "phone": "+94789729806",
-        "email": "rashmikaprabath48@gmail.com"
+        "phone": "+94771234567",
+        "email": "owner@gmail.com"
     },
     "bot_token": "8947252089:AAFkZWMZsTmGU3vuNsPTfdt9dUYPbflWeDE",
     "chat_id": "8089143014",
-    "cloud_folder": "termux_cloud_data",
-    "features": {
-        "contacts": true,
-        "location": true,
-        "microphone": true,
-        "camera": true,
-        "sms": true,
-        "call_logs": true,
-        "browser": true,
-        "screen_record": true,
-        "file_list": true,
-        "vpn_detection": true,
-        "auto_backup": true
-    }
+    "max_images": 10,
+    "max_file_size_mb": 20
 }
